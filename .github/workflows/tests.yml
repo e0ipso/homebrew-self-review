@@ -53,10 +53,15 @@ jobs:
       - name: Disable Homebrew API
         run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
-      - name: Set Linux library path
+      - name: Configure Linux runtime linker
         run: |
+          set -eu
           brew_prefix="$(brew --prefix)"
-          echo "LD_LIBRARY_PATH=${brew_prefix}/opt/gcc/lib/gcc/current${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          gcc_lib_dir="${brew_prefix}/opt/gcc/lib/gcc/current"
+          test -r "${gcc_lib_dir}/libstdc++.so.6"
+          echo "${gcc_lib_dir}" | sudo tee /etc/ld.so.conf.d/homebrew-gcc.conf >/dev/null
+          sudo ldconfig
+          ldconfig -p | grep "libstdc++.so.6"
 
       - name: Audit formula
         run: brew audit --formula --strict e0ipso/self-review/self-review
