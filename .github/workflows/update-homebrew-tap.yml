@@ -1,0 +1,137 @@
+name: update homebrew tap
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to publish, for example v1.38.0
+        required: true
+  repository_dispatch:
+    types:
+      - self-review-release
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      APP_REPOSITORY: e0ipso/self-review
+      TAP_REPOSITORY: e0ipso/homebrew-self-review
+    steps:
+      - name: Resolve release tag
+        id: tag
+        env:
+          DISPATCH_TAG: ${{ github.event.client_payload.release_tag || github.event.client_payload.tag }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-${DISPATCH_TAG:-}}"
+          if [[ ! "$tag" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+            echo "release_tag must look like v1.38.0" >&2
+            exit 1
+          fi
+          version="${tag#v}"
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "darwin_asset=Self.Review-darwin-arm64-${version}.zip"
+            echo "linux_asset=Self.Review-linux-x64-${version}.zip"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Wait for release assets
+        id: assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          DARWIN_ASSET: ${{ steps.tag.outputs.darwin_asset }}
+          LINUX_ASSET: ${{ steps.tag.outputs.linux_asset }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            if release_json="$(gh api "repos/${APP_REPOSITORY}/releases/tags/${RELEASE_TAG}" 2>/dev/null)"; then
+              darwin_sha="$(jq -r --arg name "$DARWIN_ASSET" '.assets[] | select(.name == $name) | .digest // "" | sub("^sha256:"; "")' <<< "$release_json")"
+              linux_sha="$(jq -r --arg name "$LINUX_ASSET" '.assets[] | select(.name == $name) | .digest // "" | sub("^sha256:"; "")' <<< "$release_json")"
+              if [[ "$darwin_sha" =~ ^[0-9a-f]{64}$ && "$linux_sha" =~ ^[0-9a-f]{64}$ ]]; then
+                {
+                  echo "darwin_sha=$darwin_sha"
+                  echo "linux_sha=$linux_sha"
+                } >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+            echo "Waiting for $DARWIN_ASSET and $LINUX_ASSET on $RELEASE_TAG, attempt $attempt/60"
+            sleep 30
+          done
+          echo "Timed out waiting for release assets with sha256 digests" >&2
+          exit 1
+
+      - name: Checkout tap
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ env.TAP_REPOSITORY }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update package definitions
+        working-directory: tap
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          DARWIN_SHA256: ${{ steps.assets.outputs.darwin_sha }}
+          LINUX_SHA256: ${{ steps.assets.outputs.linux_sha }}
+        run: |
+          set -euo pipefail
+          ruby <<'RUBY'
+          version = ENV.fetch("VERSION")
+          darwin_sha = ENV.fetch("DARWIN_SHA256")
+          linux_sha = ENV.fetch("LINUX_SHA256")
+
+          cask_path = "Casks/self-review.rb"
+          cask = File.read(cask_path)
+          cask.gsub!(/version "[^"]+"/, %(version "#{version}"))
+          cask.gsub!(/sha256 "[0-9a-f]{64}"/, %(sha256 "#{darwin_sha}"))
+          File.write(cask_path, cask)
+
+          formula_path = "Formula/self-review.rb"
+          formula = File.read(formula_path)
+          formula.gsub!(
+            %r{url "https://github\.com/e0ipso/self-review/releases/download/v[^/]+/Self\.Review-linux-x64-[^"]+\.zip"},
+            %(url "https://github.com/e0ipso/self-review/releases/download/v#{version}/Self.Review-linux-x64-#{version}.zip")
+          )
+          formula.gsub!(/sha256 "[0-9a-f]{64}"/, %(sha256 "#{linux_sha}"))
+          File.write(formula_path, formula)
+          RUBY
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+        with:
+          token: ${{ github.token }}
+
+      - name: Run tap checks
+        working-directory: tap
+        run: |
+          set -euo pipefail
+          tap_dir="$(brew --repository)/Library/Taps/e0ipso/homebrew-self-review"
+          rm -rf "$tap_dir"
+          mkdir -p "$(dirname "$tap_dir")"
+          ln -s "$PWD" "$tap_dir"
+          brew audit --cask --strict e0ipso/self-review/self-review
+          brew style --cask e0ipso/self-review/self-review
+          brew audit --formula --strict e0ipso/self-review/self-review
+          brew style --formula e0ipso/self-review/self-review
+
+      - name: Commit and push
+        working-directory: tap
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Tap already up to date for self-review ${VERSION}"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/self-review.rb Formula/self-review.rb
+          git commit -m "self-review ${VERSION}"
+          git push
