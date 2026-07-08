@@ -56,8 +56,7 @@ jobs:
       - name: Configure Linux runtime linker
         run: |
           set -eu
-          brew_prefix="$(brew --prefix)"
-          gcc_lib_dir="${brew_prefix}/opt/gcc/lib/gcc/current"
+          gcc_lib_dir="${HOMEBREW_PREFIX}/opt/gcc/lib/gcc/current"
           test -r "${gcc_lib_dir}/libstdc++.so.6"
           echo "${gcc_lib_dir}" | sudo tee /etc/ld.so.conf.d/homebrew-gcc.conf >/dev/null
           sudo ldconfig
