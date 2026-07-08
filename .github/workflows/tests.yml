@@ -56,10 +56,12 @@ jobs:
       - name: Install Linux runtime libraries
         run: |
           set -eu
-          sudo apt-get update
-          sudo apt-get install -y libstdc++6
-          sudo ldconfig
-          ldconfig -p | grep "libstdc++.so.6"
+          brew list --formula gcc >/dev/null 2>&1 || HOMEBREW_NO_AUTO_UPDATE=1 brew install --formula gcc
+          gcc_lib_dir="$(find "${HOMEBREW_PREFIX}/opt/gcc/lib/gcc" -name libstdc++.so.6 -printf "%h\n" | sort | head -n 1)"
+          test -n "${gcc_lib_dir}"
+          mkdir -p "${HOMEBREW_PREFIX}/lib"
+          ln -sf "${gcc_lib_dir}/libstdc++.so.6" "${HOMEBREW_PREFIX}/lib/libstdc++.so.6"
+          test -r "${HOMEBREW_PREFIX}/lib/libstdc++.so.6"
 
       - name: Audit formula
         run: brew audit --formula --strict e0ipso/self-review/self-review
