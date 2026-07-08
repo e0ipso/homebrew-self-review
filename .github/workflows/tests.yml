@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+env:
+  HOMEBREW_NO_INSTALL_FROM_API: 1
+
 jobs:
   macos:
     runs-on: macos-26

@@ -17,6 +17,7 @@ jobs:
       contents: read
     env:
       APP_REPOSITORY: e0ipso/self-review
+      HOMEBREW_NO_INSTALL_FROM_API: 1
       TAP_REPOSITORY: e0ipso/homebrew-self-review
     steps:
       - name: Resolve release tag
