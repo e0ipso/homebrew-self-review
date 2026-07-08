@@ -20,13 +20,6 @@ jobs:
       - name: Disable Homebrew API
         run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
-      - name: Tap repository
-        run: |
-          tap_dir="$(brew --repository)/Library/Taps/e0ipso/homebrew-self-review"
-          rm -rf "$tap_dir"
-          mkdir -p "$(dirname "$tap_dir")"
-          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
-
       - name: Audit cask
         run: brew audit --cask --strict e0ipso/self-review/self-review
 
@@ -59,13 +52,6 @@ jobs:
 
       - name: Disable Homebrew API
         run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
-
-      - name: Tap repository
-        run: |
-          tap_dir="$(brew --repository)/Library/Taps/e0ipso/homebrew-self-review"
-          rm -rf "$tap_dir"
-          mkdir -p "$(dirname "$tap_dir")"
-          ln -s "$GITHUB_WORKSPACE" "$tap_dir"
 
       - name: Audit formula
         run: brew audit --formula --strict e0ipso/self-review/self-review
