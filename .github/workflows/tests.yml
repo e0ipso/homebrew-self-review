@@ -6,9 +6,6 @@ on:
       - main
   pull_request:
 
-env:
-  HOMEBREW_NO_INSTALL_FROM_API: 1
-
 jobs:
   macos:
     runs-on: macos-26
@@ -19,6 +16,9 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Disable Homebrew API
+        run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
       - name: Tap repository
         run: |
@@ -56,6 +56,9 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Disable Homebrew API
+        run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
       - name: Tap repository
         run: |

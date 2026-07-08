@@ -17,7 +17,6 @@ jobs:
       contents: read
     env:
       APP_REPOSITORY: e0ipso/self-review
-      HOMEBREW_NO_INSTALL_FROM_API: 1
       TAP_REPOSITORY: e0ipso/homebrew-self-review
     steps:
       - name: Resolve release tag
@@ -107,6 +106,10 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ github.token }}
+
+      - name: Disable Homebrew API
+        working-directory: tap
+        run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
       - name: Run tap checks
         working-directory: tap
