@@ -53,6 +53,11 @@ jobs:
       - name: Disable Homebrew API
         run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
+      - name: Set Linux library path
+        run: |
+          brew_prefix="$(brew --prefix)"
+          echo "LD_LIBRARY_PATH=${brew_prefix}/opt/gcc/lib/gcc/current${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
       - name: Audit formula
         run: brew audit --formula --strict e0ipso/self-review/self-review
 
@@ -60,7 +65,7 @@ jobs:
         run: brew style --formula e0ipso/self-review/self-review
 
       - name: Install formula
-        run: brew install --verbose e0ipso/self-review/self-review
+        run: brew install --formula --verbose e0ipso/self-review/self-review
 
       - name: Check version
         run: self-review --version 2>&1 | grep "self-review v"
