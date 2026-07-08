@@ -53,12 +53,11 @@ jobs:
       - name: Disable Homebrew API
         run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
-      - name: Configure Linux runtime linker
+      - name: Install Linux runtime libraries
         run: |
           set -eu
-          gcc_lib_dir="${HOMEBREW_PREFIX}/opt/gcc/lib/gcc/current"
-          test -r "${gcc_lib_dir}/libstdc++.so.6"
-          echo "${gcc_lib_dir}" | sudo tee /etc/ld.so.conf.d/homebrew-gcc.conf >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y libstdc++6
           sudo ldconfig
           ldconfig -p | grep "libstdc++.so.6"
 
