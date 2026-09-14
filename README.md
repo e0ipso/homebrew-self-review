@@ -20,6 +20,16 @@ macOS:
 brew install --cask e0ipso/self-review/self-review
 ```
 
+The macOS command uses a wrapper that launches the executable inside the app
+bundle, so Electron can locate its helper apps. It respects Homebrew's `--appdir`.
+If an existing installation fails with `Unable to find helper app`, reinstall
+the cask to replace the old launcher:
+
+```bash
+brew update
+brew reinstall --cask e0ipso/self-review/self-review
+```
+
 Linux:
 
 ```bash

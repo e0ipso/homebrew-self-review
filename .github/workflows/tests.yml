@@ -27,10 +27,39 @@ jobs:
         run: brew style --cask e0ipso/self-review/self-review
 
       - name: Install cask
-        run: brew install --cask --verbose e0ipso/self-review/self-review
+        run: brew install --cask --verbose --appdir="$RUNNER_TEMP/Self Review Applications" e0ipso/self-review/self-review
 
       - name: Check version
         run: self-review --version 2>&1 | grep "self-review v"
+
+      - name: Check desktop launcher
+        run: |
+          set -euo pipefail
+          review_dir="$(mktemp -d)"
+          app_pid=""
+          cleanup() {
+            if [[ -n "$app_pid" ]]; then
+              kill "$app_pid" 2>/dev/null || true
+              wait "$app_pid" 2>/dev/null || true
+            fi
+            rm -rf "$review_dir"
+          }
+          trap cleanup EXIT
+          cd "$review_dir"
+          git init -q
+          printf 'Review this file.\n' > example.txt
+          # Reproduce the Homebrew Frameworks layout that triggers #134.
+          mkdir -p "$(brew --prefix)/Frameworks"
+          # Exercise the wrapper even when a future app release has its own guard.
+          SELF_REVIEW_REEXECED=1 self-review > launch.log 2>&1 &
+          app_pid=$!
+          sleep 10
+          cat launch.log
+          kill -0 "$app_pid"
+          if grep -E 'Unable to find helper app|GPU process isn.t usable|FATAL' launch.log; then
+            exit 1
+          fi
+          pgrep -P "$app_pid" -f 'Self Review Helper'
 
       - name: Uninstall cask
         if: always()
