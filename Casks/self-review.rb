@@ -12,11 +12,13 @@ cask "self-review" do
     strategy :github_latest
   end
 
-  depends_on :macos
   depends_on arch: :arm64
+  depends_on :macos
 
   app "Self Review.app"
-  binary "#{appdir}/Self Review.app/Contents/MacOS/Self Review", target: "self-review"
+  # Electron must launch from the bundle path to find its helper apps.
+  command_wrapper "self-review",
+                  executable: "#{appdir}/Self Review.app/Contents/MacOS/Self Review"
 
   # No zap stanza until generated and verified on a macOS host.
 end
