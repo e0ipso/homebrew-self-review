@@ -1,84 +1,116 @@
 name: update homebrew tap
 
 on:
+  schedule:
+    # Hourly poll of upstream releases. The app repository does not notify
+    # this tap when it publishes, so the tap has to look for itself.
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to publish, for example v1.38.0
-        required: true
+        description: >-
+          Release tag to publish, for example v1.38.0. Leave empty to publish
+          the newest upstream release whose macOS and Linux ZIPs both exist.
+        required: false
   repository_dispatch:
     types:
       - self-review-release
+
+concurrency:
+  group: update-homebrew-tap
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
       APP_REPOSITORY: e0ipso/self-review
-      TAP_REPOSITORY: e0ipso/homebrew-self-review
     steps:
-      - name: Resolve release tag
-        id: tag
-        env:
-          DISPATCH_TAG: ${{ github.event.client_payload.release_tag || github.event.client_payload.tag }}
-          INPUT_TAG: ${{ inputs.release_tag }}
-        run: |
-          set -euo pipefail
-          tag="${INPUT_TAG:-${DISPATCH_TAG:-}}"
-          if [[ ! "$tag" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
-            echo "release_tag must look like v1.38.0" >&2
-            exit 1
-          fi
-          version="${tag#v}"
-          {
-            echo "tag=$tag"
-            echo "version=$version"
-            echo "darwin_asset=Self.Review-darwin-arm64-${version}.zip"
-            echo "linux_asset=Self.Review-linux-x64-${version}.zip"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Wait for release assets
-        id: assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
-          DARWIN_ASSET: ${{ steps.tag.outputs.darwin_asset }}
-          LINUX_ASSET: ${{ steps.tag.outputs.linux_asset }}
-        run: |
-          set -euo pipefail
-          for attempt in {1..60}; do
-            if release_json="$(gh api "repos/${APP_REPOSITORY}/releases/tags/${RELEASE_TAG}" 2>/dev/null)"; then
-              darwin_sha="$(jq -r --arg name "$DARWIN_ASSET" '.assets[] | select(.name == $name) | .digest // "" | sub("^sha256:"; "")' <<< "$release_json")"
-              linux_sha="$(jq -r --arg name "$LINUX_ASSET" '.assets[] | select(.name == $name) | .digest // "" | sub("^sha256:"; "")' <<< "$release_json")"
-              if [[ "$darwin_sha" =~ ^[0-9a-f]{64}$ && "$linux_sha" =~ ^[0-9a-f]{64}$ ]]; then
-                {
-                  echo "darwin_sha=$darwin_sha"
-                  echo "linux_sha=$linux_sha"
-                } >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-            fi
-            echo "Waiting for $DARWIN_ASSET and $LINUX_ASSET on $RELEASE_TAG, attempt $attempt/60"
-            sleep 30
-          done
-          echo "Timed out waiting for release assets with sha256 digests" >&2
-          exit 1
-
       - name: Checkout tap
         uses: actions/checkout@v5
         with:
-          repository: ${{ env.TAP_REPOSITORY }}
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: tap
+          # A PAT makes the bump commit run tap CI; github.token pushes do not
+          # trigger other workflows. Both can push.
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN || github.token }}
+
+      - name: Resolve release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.release_tag || github.event.client_payload.release_tag || github.event.client_payload.tag }}
+        run: |
+          set -euo pipefail
+
+          # Emits "<tag> <darwin sha256> <linux sha256>" for each release that
+          # is final and carries both tap assets with digests. Skips the rest.
+          complete_release='
+            select((.draft | not) and (.prerelease | not))
+            | select(.tag_name | test("^v[0-9]+[.][0-9]+[.][0-9]+$"))
+            | .tag_name as $tag
+            | ($tag | ltrimstr("v")) as $version
+            | ([.assets[] | {(.name): (.digest // "" | sub("^sha256:"; ""))}] | add // {}) as $digests
+            | ($digests["Self.Review-darwin-arm64-\($version).zip"] // "") as $darwin
+            | ($digests["Self.Review-linux-x64-\($version).zip"] // "") as $linux
+            | select(($darwin | test("^[0-9a-f]{64}$")) and ($linux | test("^[0-9a-f]{64}$")))
+            | "\($tag) \($darwin) \($linux)"
+          '
+
+          current_version="$(sed -n 's/^  version "\([^"]*\)"$/\1/p' Casks/self-review.rb)"
+          test -n "$current_version"
+
+          if [[ -n "$REQUESTED_TAG" ]]; then
+            if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+              echo "release_tag must look like v1.38.0, got '$REQUESTED_TAG'" >&2
+              exit 1
+            fi
+            resolved=""
+            for attempt in {1..60}; do
+              resolved="$(gh api "repos/${APP_REPOSITORY}/releases/tags/${REQUESTED_TAG}" --jq "$complete_release" 2>/dev/null || true)"
+              [[ -n "$resolved" ]] && break
+              echo "Waiting for both ZIP assets on ${REQUESTED_TAG}, attempt ${attempt}/60"
+              sleep 30
+            done
+            if [[ -z "$resolved" ]]; then
+              echo "Timed out waiting for ${REQUESTED_TAG} assets with sha256 digests" >&2
+              exit 1
+            fi
+          else
+            # A release can exist without assets when the upstream release job
+            # dies between tagging and uploading. Take the highest complete one.
+            resolved="$(gh api "repos/${APP_REPOSITORY}/releases?per_page=20" --jq ".[] | $complete_release" | sort -V | tail -n 1)"
+            if [[ -z "$resolved" ]]; then
+              echo "No upstream release has both ZIP assets; nothing to do"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          read -r tag darwin_sha linux_sha <<< "$resolved"
+          version="${tag#v}"
+
+          if [[ -z "$REQUESTED_TAG" ]] && [[ "$(printf '%s\n%s\n' "$current_version" "$version" | sort -V | tail -n 1)" == "$current_version" ]]; then
+            echo "Tap is at ${current_version}; newest complete upstream release is ${version}. Nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Publishing self-review ${version} (tap currently at ${current_version})"
+          {
+            echo "skip=false"
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "darwin_sha=$darwin_sha"
+            echo "linux_sha=$linux_sha"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Update package definitions
-        working-directory: tap
+        if: steps.release.outputs.skip != 'true'
         env:
-          VERSION: ${{ steps.tag.outputs.version }}
-          DARWIN_SHA256: ${{ steps.assets.outputs.darwin_sha }}
-          LINUX_SHA256: ${{ steps.assets.outputs.linux_sha }}
+          VERSION: ${{ steps.release.outputs.version }}
+          DARWIN_SHA256: ${{ steps.release.outputs.darwin_sha }}
+          LINUX_SHA256: ${{ steps.release.outputs.linux_sha }}
         run: |
           set -euo pipefail
           ruby <<'RUBY'
@@ -101,18 +133,20 @@ jobs:
           formula.gsub!(/sha256 "[0-9a-f]{64}"/, %(sha256 "#{linux_sha}"))
           File.write(formula_path, formula)
           RUBY
+          git diff
 
       - name: Set up Homebrew
+        if: steps.release.outputs.skip != 'true'
         uses: Homebrew/actions/setup-homebrew@main
         with:
           token: ${{ github.token }}
 
       - name: Disable Homebrew API
-        working-directory: tap
+        if: steps.release.outputs.skip != 'true'
         run: echo "HOMEBREW_NO_INSTALL_FROM_API=1" >> "$GITHUB_ENV"
 
       - name: Run tap checks
-        working-directory: tap
+        if: steps.release.outputs.skip != 'true'
         run: |
           set -euo pipefail
           tap_dir="$(brew --repository)/Library/Taps/e0ipso/homebrew-self-review"
@@ -125,9 +159,9 @@ jobs:
           brew style --formula e0ipso/self-review/self-review
 
       - name: Commit and push
-        working-directory: tap
+        if: steps.release.outputs.skip != 'true'
         env:
-          VERSION: ${{ steps.tag.outputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
