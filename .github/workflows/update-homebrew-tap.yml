@@ -34,6 +34,8 @@ jobs:
           # A PAT makes the bump commit run tap CI; github.token pushes do not
           # trigger other workflows. Both can push.
           token: ${{ secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          # Read the current branch head even if this run waited in the queue.
+          ref: ${{ github.ref }}
 
       - name: Resolve release
         id: release
@@ -45,6 +47,8 @@ jobs:
 
           # Emits "<tag> <darwin sha256> <linux sha256>" for each release that
           # is final and carries both tap assets with digests. Skips the rest.
+          # Keep jq's interpolation literal until gh evaluates the filter.
+          # shellcheck disable=SC2016
           complete_release='
             select((.draft | not) and (.prerelease | not))
             | select(.tag_name | test("^v[0-9]+[.][0-9]+[.][0-9]+$"))
@@ -79,7 +83,7 @@ jobs:
           else
             # A release can exist without assets when the upstream release job
             # dies between tagging and uploading. Take the highest complete one.
-            resolved="$(gh api "repos/${APP_REPOSITORY}/releases?per_page=20" --jq ".[] | $complete_release" | sort -V | tail -n 1)"
+            resolved="$(gh api --paginate "repos/${APP_REPOSITORY}/releases?per_page=100" --jq ".[] | $complete_release" | sort -V | tail -n 1)"
             if [[ -z "$resolved" ]]; then
               echo "No upstream release has both ZIP assets; nothing to do"
               echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -104,6 +108,19 @@ jobs:
             echo "darwin_sha=$darwin_sha"
             echo "linux_sha=$linux_sha"
           } >> "$GITHUB_OUTPUT"
+
+      # Homebrew setup replaces the workspace with its own tap checkout.
+      # Restore this branch and its push credentials before changing files.
+      - name: Set up Homebrew
+        if: steps.release.outputs.skip != 'true'
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Restore tap checkout
+        if: steps.release.outputs.skip != 'true'
+        uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN || github.token }}
+          ref: ${{ github.ref }}
 
       - name: Update package definitions
         if: steps.release.outputs.skip != 'true'
@@ -134,12 +151,6 @@ jobs:
           File.write(formula_path, formula)
           RUBY
           git diff
-
-      - name: Set up Homebrew
-        if: steps.release.outputs.skip != 'true'
-        uses: Homebrew/actions/setup-homebrew@main
-        with:
-          token: ${{ github.token }}
 
       - name: Disable Homebrew API
         if: steps.release.outputs.skip != 'true'

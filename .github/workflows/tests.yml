@@ -7,6 +7,17 @@ on:
   pull_request:
 
 jobs:
+  updater:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install test dependencies
+        run: python3 -m pip install PyYAML
+      - name: Test release updater
+        run: python3 -m unittest discover -s tests -v
+
   macos:
     runs-on: macos-26
     permissions:
