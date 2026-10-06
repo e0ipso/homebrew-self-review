@@ -11,8 +11,10 @@ definitions and automation for installing release artifacts from
 - `Formula/self-review.rb`: Linux x64 formula for the Electron ZIP.
 - `.github/workflows/tests.yml`: CI checks for audit, style, install, version,
   and formula test coverage.
-- `.github/workflows/update-homebrew-tap.yml`: release-driven updater for the
-  version and SHA-256 values in the cask and formula.
+- `.github/workflows/update-homebrew-tap.yml`: hourly poll of upstream
+  releases that bumps the version and SHA-256 values in the cask and formula.
+  Also runs on manual dispatch (optionally with a tag) and on a
+  `self-review-release` repository dispatch.
 - `.github/workflows/publish.yml`: Homebrew `brew pr-pull` helper workflow from
   the generated tap skeleton.
 
@@ -43,6 +45,13 @@ brew uninstall self-review
 ```
 
 ## Release Updates
+
+The update workflow only publishes a release once both
+`Self.Review-darwin-arm64-<version>.zip` and `Self.Review-linux-x64-<version>.zip`
+exist with sha256 digests. It skips upstream tags that never got their assets
+and picks the highest complete version. It pushes with `github.token` unless a
+`HOMEBREW_TAP_TOKEN` secret exists; only a PAT push triggers tap CI on the bump
+commit.
 
 When updating manually, use the asset digests from the matching upstream GitHub
 release:

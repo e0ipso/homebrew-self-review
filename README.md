@@ -10,7 +10,8 @@ The tap publishes:
 - A Linux formula for the x64 Electron ZIP.
 - GitHub Actions checks that audit, style, install, and smoke-test both package
   definitions.
-- An update workflow that bumps the cask and formula after upstream releases.
+- An hourly update workflow that bumps the cask and formula when upstream
+  publishes a release with both ZIP assets.
 
 ## Install
 
@@ -85,9 +86,11 @@ brew audit --formula --strict e0ipso/self-review/self-review
 brew style --formula e0ipso/self-review/self-review
 ```
 
-The `update homebrew tap` workflow accepts a release tag such as `v1.38.0`,
-waits for the macOS and Linux ZIP assets, updates the cask/formula versions and
-checksums, runs tap checks, and commits the result.
+The `update homebrew tap` workflow runs hourly and publishes the newest upstream
+release that has both the macOS and Linux ZIP assets. Run it by hand with a tag
+such as `v1.38.0` to wait for that release's assets instead. Either way it
+updates the cask/formula versions and checksums, runs tap checks, and commits
+the result.
 
 ## Homebrew Documentation
 
