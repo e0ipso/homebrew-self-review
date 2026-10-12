@@ -62,3 +62,9 @@ release:
 
 Keep platform notes accurate: macOS is Apple Silicon only until an Intel macOS
 ZIP exists, and Linux Homebrew is x64 only until a Linux ARM64 ZIP exists.
+
+<!-- >>> kenkeep:kk-index >>> -->
+You are required to load [.ai/kenkeep/ENTRY.md](.ai/kenkeep/ENTRY.md), the small curated entry catalog for this repo. Enter there and descend using progressive disclosure principles.
+
+
+<!-- <<< kenkeep:kk-index <<< -->
