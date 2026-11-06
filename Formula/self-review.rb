@@ -1,8 +1,8 @@
 class SelfReview < Formula
   desc "GitHub-style PR review UI for local git diffs"
   homepage "https://github.com/e0ipso/self-review"
-  url "https://github.com/e0ipso/self-review/releases/download/v2.0.2/Self.Review-linux-x64-2.0.2.zip"
-  sha256 "6bc0f4c32d02dde8787159c8b8dad9f1af1200410b216c7eca947036fc885df5"
+  url "https://github.com/e0ipso/self-review/releases/download/v2.0.3/Self.Review-linux-x64-2.0.3.zip"
+  sha256 "1b508c888a7c1078714381fedb6eff2416c212b0834b0125ee892dbae10eddd5"
   license "MIT"
 
   depends_on "patchelf" => :build
