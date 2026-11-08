@@ -1,6 +1,6 @@
 cask "self-review" do
-  version "2.0.3"
-  sha256 "0f47c4fc974be35c06fe14746d9112174ce01daae0160f008f3abaac09dfe013"
+  version "2.0.4"
+  sha256 "6183dfd02d6f5aad81d498871c3267f4822b5cb74bee73c20c7a65268947f8a9"
 
   url "https://github.com/e0ipso/self-review/releases/download/v#{version}/Self.Review-darwin-arm64-#{version}.zip"
   name "Self Review"
